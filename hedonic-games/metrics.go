@@ -61,37 +61,47 @@ func SilhouetteCoefficient(g *Graph, partition map[int]int) float64 {
 	for node, nodeComm := range partition {
 		nodes := comms[nodeComm]
 
-		// a(i) = средние рёбра внутри коммьюнити
+		// a(i) = среднее расстояние внутри своей коммьюнити
+		// расстояние = 0, если есть ребро; 1, если нет
 		a := 0.0
 		if len(nodes) > 1 {
 			for _, other := range nodes {
-				if node != other && g.HasEdge(node, other) {
-					a += 1.0
+				if node == other {
+					continue
+				}
+				if g.HasEdge(node, other) {
+					a += 0.0 // связаны — близко
+				} else {
+					a += 1.0 // не связаны — далеко
 				}
 			}
 			a /= float64(len(nodes) - 1)
 		}
 
-		// b(i) = минимальные средние рёбра в другие коммьюнити
+		// b(i) = минимальное среднее расстояние до другой коммьюнити
 		b := math.MaxFloat64
 		for otherComm, otherNodes := range comms {
-			if otherComm != nodeComm {
-				edges := 0.0
-				for _, other := range otherNodes {
-					if g.HasEdge(node, other) {
-						edges += 1.0
-					}
+			if otherComm == nodeComm {
+				continue
+			}
+			dist := 0.0
+			for _, other := range otherNodes {
+				if g.HasEdge(node, other) {
+					dist += 0.0
+				} else {
+					dist += 1.0
 				}
-				if len(otherNodes) > 0 {
-					edges /= float64(len(otherNodes))
-				}
-				if edges < b {
-					b = edges
-				}
+			}
+			if len(otherNodes) > 0 {
+				dist /= float64(len(otherNodes))
+			}
+			if dist < b {
+				b = dist
 			}
 		}
 		if b == math.MaxFloat64 {
-			b = 0
+			// Нет соседних коммьюнити или нет рёбер — считаем максимально далеко
+			b = 1.0
 		}
 
 		// s(i) = (b(i) - a(i)) / max(a(i), b(i))
@@ -101,7 +111,7 @@ func SilhouetteCoefficient(g *Graph, partition map[int]int) float64 {
 			totalSilhouette += s
 			count++
 		} else if a == 0 && b == 0 {
-			// Изолированный узел
+			// изолированный узел без связей
 			count++
 		}
 	}

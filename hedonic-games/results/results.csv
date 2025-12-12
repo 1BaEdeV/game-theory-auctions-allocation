@@ -1,0 +1,2 @@
+Graph,Nodes,Edges,Gamma,Iterations,Modularity,Silhouette,Communities,Duration
+Teachers Network,88,115,1.0,2,0.6289,-1.0000,16,0s

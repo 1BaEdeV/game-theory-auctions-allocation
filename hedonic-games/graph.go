@@ -2,38 +2,37 @@ package main
 
 import (
 	"sort"
-	"fmt"
 )
 
-type Graph struct{
+type Graph struct {
 	Nodes map[int]bool
 	Edges map[int]map[int]bool
 }
 
 func NewGraph() *Graph {
-	return *Graph{
-		Nodes: make(map[int]bool)
-		Edges: make(map[int]map[int]bool) 
+	return &Graph{
+		Nodes: make(map[int]bool),
+		Edges: make(map[int]map[int]bool),
 	}
 }
 
-func (g *Graph)AddNode( node int){
-	g.Nodes[node]=true
-	if g.Edges[node] = nil{
+func (g *Graph) AddNode(node int) {
+	g.Nodes[node] = true
+	if g.Edges[node] == nil {
 		g.Edges[node] = make(map[int]bool)
 	}
 }
 
-func (g *Graph)AddEdge(u, v int){
+func (g *Graph) AddEdge(u, v int) {
 	g.AddNode(u)
 	g.AddNode(v)
-	g.Edges[u][v]=true
-	g.Edges[v][u]=true
+	g.Edges[u][v] = true
+	g.Edges[v][u] = true
 }
 
-func (g *Graph)GetNeighbors( node int) []int{
-	var neighbors int[]
-	for nghbr := range g.Edges[node]{
+func (g *Graph) GetNeighbors(node int) []int {
+	var neighbors []int
+	for nghbr := range g.Edges[node] {
 		neighbors = append(neighbors, nghbr)
 	}
 	sort.Ints(neighbors)
