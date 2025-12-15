@@ -1,109 +1,130 @@
+from abc import ABC, abstractmethod
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-from transliterate import translit
-from tqdm import tqdm
 import re
-"""
-    df
-        columns:
-            Name - teachers name
-            Url - teachers page url
-            Table - кафдера
-            NameAbbr
-            EngName
-            EngNameAbbr
-            LastName
-            EngLastName
-"""
+
+class BaseParser(ABC):
+    @abstractmethod
+    def extract_publications(self, source):
+        pass
+
+class APMathParser(BaseParser):
+    def extract_publications(self, soup: BeautifulSoup) -> list[str]:
+        pubs = []
+
+        for h in soup.find_all(["h2", "h3", "h4"], class_="trigger"):
+            title = h.get_text(strip=True)
+
+            if title not in {
+                "Научные труды",
+                "Некоторые научные публикации",
+                "Публикации",
+                "Научные монографии",
+                "Учебно-методические материалы"
+            }:
+                continue
+
+            ol = h.find_next("ol")
+            if not ol:
+                continue
+
+            for li in ol.find_all("li"):
+                pubs.append(li.get_text(" ", strip=True))
+
+        return pubs
+
+
+class SeleniumHTMLFetcher:
+    _driver = None
+
+    @classmethod
+    def get_driver(cls):
+        if cls._driver is None:
+            options = Options()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
+
+            cls._driver = webdriver.Chrome(
+                service=Service(ChromeDriverManager().install()),
+                options=options
+            )
+        return cls._driver
+
+    @classmethod
+    def get_html(cls, url: str) -> str:
+        driver = cls.get_driver()
+        driver.get(url)
+        time.sleep(3)  # eLIBRARY грузит через JS
+        return driver.page_source
+
+class ELibraryParser(BaseParser):
+    def extract_publications(self, url: str) -> list[str]:
+        html = SeleniumHTMLFetcher.get_html(url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        authors = []
+
+        rows = soup.find_all("tr", id=lambda x: x and x.startswith("arw"))
+        for row in rows:
+            td = row.find("td", align="left")
+            if not td:
+                continue
+
+            i_tag = td.find("i")
+            if not i_tag:
+                continue
+
+            text = i_tag.get_text(strip=True)
+            if text:
+                authors.append(text)
+
+        return authors
 
 class Extractor:
     def __init__(self, df: pd.DataFrame):
         self.df = df
-        self.urls = df['Url'].tolist()
-    
-    def extract_section(self, soup: BeautifulSoup, title):
-        """
-            Ищет заголовок h3 с текстом title и возвращает список текстов <li>.
-            Поддерживает как старую структуру (h3 -> ol -> li), так и новую (h3 -> div.toggle_container -> div.block -> ol -> li).
-        """
-        header = soup.find("h3", class_="trigger", string=title)
-        if not header:
-            header = soup.find("h2", class_="trigger", string=title)
-            if not header:
-                header = soup.find("h4", class_="trigger", string=title)
-                if not header:
-                    return []
-
-        # Старая структура: h3 -> ol -> li
-        ol = header.find_next("ol")
-        if ol:
-            items = ol.find_all("li")
-            return [item.get_text(" ", strip=True) for item in items]
-
-        # Новая структура: h3 -> div.toggle_container -> div.block -> ol -> li
-        toggle = header.find_next_sibling("div", class_="toggle_container")
-        if toggle:
-            block = toggle.find("div", class_="block")
-            if block:
-                # Вариант 1: ol внутри block
-                ol = block.find("ol")
-                if ol:
-                    items = ol.find_all("li", recursive=False)
-                    result = []
-                    for item in items:
-                        # Если внутри li есть ol (вложенный список), рекурсивно собрать все li из вложенного ol
-                        nested_ol = item.find("ol")
-                        if nested_ol:
-                            nested_items = nested_ol.find_all("li")
-                            result.extend([nested_item.get_text(" ", strip=True) for nested_item in nested_items])
-                        else:
-                            result.append(item.get_text(" ", strip=True))
-                    return result
-                # Вариант 2: ol после текста внутри block (например, 'Последние 20 публикаций')
-                for child in block.children:
-                    if getattr(child, 'name', None) == 'ol':
-                        items = child.find_all("li", recursive=False)
-                        result = []
-                        for item in items:
-                            nested_ol = item.find("ol")
-                            if nested_ol:
-                                nested_items = nested_ol.find_all("li")
-                                result.extend([nested_item.get_text(" ", strip=True) for nested_item in nested_items])
-                            else:
-                                result.append(item.get_text(" ", strip=True))
-                        return result
-
-        return []
+        self.parsers = {
+            "Url": APMathParser(),   # обычные сайты
+            "SI": ELibraryParser()   # Science Index
+        }
 
     def extract(self):
-        """
-        Собирает публикации по каждому преподавателю и возвращает список словарей,
-        где ключ — фамилия преподавателя, значение — список публикаций.
-        """
         data = {}
-        for idx, url in enumerate(tqdm(self.urls)):
-            last_name = self.df.iloc[idx]['LastName'] if 'LastName' in self.df.columns else self.df.iloc[idx]['Name'].split()[0]
+
+        for _, row in self.df.iterrows():
+            last_name = row["LastName"]
             pubs = []
-            if not isinstance(url, str) or not url:
-                data[last_name] = []
-                continue
 
-            response = requests.get(url)
-            response.encoding = "utf-8"
-            soup = BeautifulSoup(response.text, "html.parser")
-            
-            pubs.extend(self.extract_section(soup, "Научные труды"))
-            pubs.extend(self.extract_section(soup, "Некоторые научные публикации"))
-            pubs.extend(self.extract_section(soup, "Публикации"))
-            pubs.extend(self.extract_section(soup, "Научные монографии"))
-            pubs.extend(self.extract_section(soup, "Учебно-методические материалы"))
+            for column, parser in self.parsers.items():
+                url = row.get(column)
+                if not isinstance(url, str) or not url:
+                    continue
 
-            data[last_name] = pubs
+                try:
+                    if column == "SI":
+                        pubs.extend(parser.extract_publications(url))
+                    else:
+                        r = requests.get(url, timeout=15)
+                        r.encoding = "utf-8"
+                        soup = BeautifulSoup(r.text, "html.parser")
+                        pubs.extend(parser.extract_publications(soup))
+                except Exception as e:
+                    print(f"[WARN] {last_name} {column}: {e}")
+
+            data[last_name] = list(dict.fromkeys(pubs))
 
         self.data = data
         return data
-    
+
     def last_names(self):
         """
         Возвращает словарь, где ключ — фамилия преподавателя,
@@ -137,10 +158,4 @@ class Extractor:
                 found.update(w for w in en_words if w in all_last_names)
             result[last_name] = list(found)
         return result
-    
-    def make_relations(self):
-        """
-        Возвращает словарь, где ключ — фамилия преподавателя,
-        значение — массив фамилий, которые есть и в self.df, и встречаются в публикациях этого преподавателя.
-        """
-        pass
+

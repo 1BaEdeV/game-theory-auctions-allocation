@@ -20,7 +20,7 @@ def take_last_name(full_name):
     return parts[0]
 
 def df_maker() -> pd.DataFrame:
-    teachers = pd.read_csv('amcp_teachers.csv')
+    teachers = pd.read_csv('amcp.csv')
 
     teachers['NameAbbr'] = teachers['Name'].apply(format_name)
 
