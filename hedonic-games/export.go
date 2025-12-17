@@ -210,3 +210,62 @@ func PrintResultsDetailed(results []Result) {
 	}
 	fmt.Println()
 }
+
+// AppendResultsCSV добавляет результаты в CSV (если файла нет — создаёт с заголовком)
+func AppendResultsCSV(results []Result, filename string) error {
+	// Создать директорию если её нет
+	os.MkdirAll("results", 0755)
+
+	header := []string{
+		"Graph",
+		"Nodes",
+		"Edges",
+		"Gamma",
+		"Iterations",
+		"Modularity",
+		"Silhouette",
+		"Communities",
+		"Duration",
+	}
+
+	// Проверяем, есть ли уже файл
+	_, err := os.Stat(filename)
+	fileExists := err == nil
+
+	// Открываем на дозапись (создаём, если нет)
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("❌ не могу открыть файл %s: %w", filename, err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Если файл новый — пишем заголовок
+	if !fileExists {
+		if err := writer.Write(header); err != nil {
+			return fmt.Errorf("❌ ошибка при записи заголовка: %w", err)
+		}
+	}
+
+	// Пишем строки
+	for _, r := range results {
+		row := []string{
+			r.Graph,
+			strconv.Itoa(r.Nodes),
+			strconv.Itoa(r.Edges),
+			fmt.Sprintf("%.6f", r.Gamma),
+			strconv.Itoa(r.Iterations),
+			fmt.Sprintf("%.6f", r.Modularity),
+			fmt.Sprintf("%.6f", r.Silhouette),
+			strconv.Itoa(r.Communities),
+			r.Duration,
+		}
+		if err := writer.Write(row); err != nil {
+			return fmt.Errorf("ошибка при записи строки: %w", err)
+		}
+	}
+
+	return nil
+}

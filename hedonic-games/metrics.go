@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -122,16 +123,7 @@ func SilhouetteCoefficient(g *Graph, partition map[int]int) float64 {
 	return 0
 }
 
-// NumCommunities возвращает количество сообществ
-func NumCommunities(partition map[int]int) int {
-	comms := make(map[int]bool)
-	for _, comm := range partition {
-		comms[comm] = true
-	}
-	return len(comms)
-}
-
-// PrintCommunities выводит в консоль информацию о сообществах
+// PrintCommunities печатает разбиение узлов по сообществам
 func PrintCommunities(partition map[int]int) {
 	comms := make(map[int][]int)
 	for node, comm := range partition {
@@ -139,6 +131,14 @@ func PrintCommunities(partition map[int]int) {
 	}
 
 	for comm, nodes := range comms {
-		println("Community", comm, ":", len(nodes), "nodes")
+		fmt.Printf("C%d: ", comm)
+		for i, v := range nodes {
+			if i > 0 {
+				fmt.Print(", ")
+			}
+			fmt.Print(v)
+		}
+		fmt.Println()
 	}
+	fmt.Println()
 }

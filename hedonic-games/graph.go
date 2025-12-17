@@ -63,3 +63,5 @@ func (g *Graph) GetNodeList() []int {
 	sort.Ints(nodes)
 	return nodes
 }
+
+// NumCommunities считает количество уникальных сообществ

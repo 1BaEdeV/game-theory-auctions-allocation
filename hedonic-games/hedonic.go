@@ -11,19 +11,6 @@ type HedonicGame struct {
 
 // NewHedonicGame создаёт новую игру
 // Каждый узел начинает в своей собственной коммьюнити
-func NewHedonicGame(g *Graph, gamma float64) *HedonicGame {
-	partition := make(map[int]int)
-	for node := range g.Nodes {
-		partition[node] = node // каждый узел - своя коммьюнити
-	}
-
-	return &HedonicGame{
-		G:          g,
-		Partition:  partition,
-		Gamma:      gamma,
-		Iterations: 0,
-	}
-}
 
 // ComputeUtility вычисляет утилиту узла в данной коммьюнити
 // u_i(C) = (количество друзей в C) - gamma * (количество чужаков в C)
