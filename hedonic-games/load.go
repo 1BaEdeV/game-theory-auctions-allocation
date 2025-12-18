@@ -39,34 +39,27 @@ type AMteachers struct {
 //
 // Параметры:
 //
-//	filePath - путь к JSON файлу (например, "../ds/relations_graph.json")
+//	filePath - путь к JSON файлу ("../ds/relations_graph.json")
 //
 // Возвращает:
 //
 //	*AMteachers - структура с загруженными данными
 //	error - ошибка если файл не найден или невалиден
-//
-// Пример:
-//
-//	teachers, err := LoadAMteachers("../ds/relations_graph.json")
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
 func LoadAMteachers(filePath string) (*AMteachers, error) {
 	// Читаем файл
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("❌ ошибка чтения файла %s: %w", filePath, err)
+		return nil, fmt.Errorf("Ошибка чтения файла %s: %w", filePath, err)
 	}
 
 	// Распарсиваем JSON
 	var teachers AMteachers
 	err = json.Unmarshal(data, &teachers)
 	if err != nil {
-		return nil, fmt.Errorf("❌ ошибка парсинга JSON: %w", err)
+		return nil, fmt.Errorf("Ошибка парсинга JSON: %w", err)
 	}
 
-	fmt.Printf("✅ Загружено: %d узлов (учителей), %d рёбер (связей)\n",
+	fmt.Printf("Загружено: %d узлов (учителей), %d рёбер (связей)\n",
 		len(teachers.Nodes), len(teachers.Edges))
 
 	return &teachers, nil
@@ -75,8 +68,6 @@ func LoadAMteachers(filePath string) (*AMteachers, error) {
 // ============================================================
 // КОНВЕРТАЦИЯ В ГРАФ
 // ============================================================
-
-// ToGraph конвертирует AMteachers в наш внутренний формат Graph
 //
 // Процесс:
 // 1. Создать новый граф
