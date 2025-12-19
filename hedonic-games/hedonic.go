@@ -4,6 +4,7 @@ type HedonicGame struct {
 	G          Graph
 	Partition  map[int]int
 	Alpha      float64
+	TargetK    int     // желаемое число сообществ (-1 = не важно скока)
 	Beta       float64 // Параметр модулярности
 	Iterations int
 }
@@ -17,9 +18,21 @@ func NewHedonicGame(g Graph, alpha float64) *HedonicGame {
 		G:          g,
 		Partition:  partition,
 		Alpha:      alpha,
+		TargetK:    -1,
 		Iterations: 0,
 	}
 
+}
+
+func NewHedonicGameWithTargetK(g Graph, alpha float64, targetK int) *HedonicGame {
+	partition := initializeRandomPartition(&g, targetK)
+	return &HedonicGame{
+		G:          g,
+		Partition:  partition,
+		Alpha:      alpha,
+		TargetK:    targetK,
+		Iterations: 0,
+	}
 }
 
 // GetCommunityStructure возвращает структуру коммьюнити
@@ -138,6 +151,7 @@ func (hg *HedonicGame) ComputeUtility_BetterResponse(node, community int) float6
 }
 
 // FindNashStablePartition_WithPotential находит Нэш-стабильное разбиение
+// Если TargetK > 0, пытается достичь примерно K сообществ
 func (hg *HedonicGame) FindNashStablePartition_WithPotential(maxIterations int, useModularity bool) map[int]int {
 	for iter := 0; iter < maxIterations; iter++ {
 		changed := false
@@ -145,8 +159,6 @@ func (hg *HedonicGame) FindNashStablePartition_WithPotential(maxIterations int, 
 
 		for _, node := range nodes {
 			oldComm := hg.Partition[node]
-
-			// Попробуем переместить узел в каждую коммьюнити и измерим изменение потенциала
 			bestComm := oldComm
 			bestPotential := hg.ComputePotentialCurrent(useModularity)
 
@@ -167,11 +179,16 @@ func (hg *HedonicGame) FindNashStablePartition_WithPotential(maxIterations int, 
 				}
 			}
 
-			// Пробуем solo
-			hg.Partition[node] = node
-			newPotential := hg.ComputePotentialCurrent(useModularity)
-			if newPotential > bestPotential {
-				bestComm = node
+			// Условие на создание новой коммьюнити
+			currentK := hg.GetNumberOfCommunities()
+			canCreateNew := hg.TargetK < 0 || currentK < hg.TargetK
+
+			if canCreateNew {
+				hg.Partition[node] = node
+				newPotential := hg.ComputePotentialCurrent(useModularity)
+				if newPotential > bestPotential {
+					bestComm = node
+				}
 			}
 
 			// Устанавливаем лучшую коммьюнити
@@ -185,12 +202,37 @@ func (hg *HedonicGame) FindNashStablePartition_WithPotential(maxIterations int, 
 
 		hg.Iterations = iter + 1
 
+		// Если много кластеров, объединяем мелкие
+		if hg.TargetK > 0 && hg.GetNumberOfCommunities() > hg.TargetK*2 {
+			hg.mergeMallCommunities()
+		}
+
 		if !changed {
 			break
 		}
 	}
 
 	return hg.Partition
+}
+
+// mergeMallCommunities объединяет мелкие кластеры с соседними
+func (hg *HedonicGame) mergeMallCommunities() {
+	comms := hg.GetCommunityStructure()
+
+	for commID, nodes := range comms {
+		if len(nodes) <= 1 {
+			// Найдём соседа с другим ID и присоединимся к нему
+			if len(nodes) > 0 {
+				node := nodes[0]
+				for neighbor := range hg.G.Edges[node] {
+					if hg.Partition[neighbor] != commID {
+						hg.Partition[node] = hg.Partition[neighbor]
+						break
+					}
+				}
+			}
+		}
+	}
 }
 
 // IsNashStable проверяет, является ли разбиение Нэш-стабильным

@@ -23,7 +23,7 @@ func main() {
 	for _, alpha := range alphaValues {
 		start := time.Now()
 
-		hg := NewHedonicGame(*g, alpha)
+		hg := NewHedonicGameWithTargetK(*g, alpha, 21)
 		partition := hg.FindNashStablePartition_WithPotential(1000, false)
 		potential := hg.ComputePotential_Formula71()
 		modularity := ComputeModularity(g, partition)

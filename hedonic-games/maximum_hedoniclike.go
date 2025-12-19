@@ -1,3 +1,4 @@
+// maximum_hedoniclike.go
 package main
 
 import (
@@ -6,18 +7,31 @@ import (
 )
 
 type MLModel struct {
-	G     *Graph
-	Pout  float64
-	Pin   float64
-	Alpha float64
-	Beta  float64
+	G       *Graph
+	Pout    float64
+	Pin     float64
+	Alpha   float64
+	Beta    float64
+	TargetK int // желаемое число сообществ (-1 = не ограничено)
 }
 
+// NewMLModel создаёт модель без ограничения на число кластеров
 func NewMLModel(g *Graph, alpha, beta float64) *MLModel {
 	return &MLModel{
-		G:     g,
-		Alpha: alpha,
-		Beta:  beta,
+		G:       g,
+		Alpha:   alpha,
+		Beta:    beta,
+		TargetK: -1,
+	}
+}
+
+// NewMLModelWithTargetK создаёт модель с желаемым числом сообществ
+func NewMLModelWithTargetK(g *Graph, alpha, beta float64, targetK int) *MLModel {
+	return &MLModel{
+		G:       g,
+		Alpha:   alpha,
+		Beta:    beta,
+		TargetK: targetK,
 	}
 }
 
@@ -57,6 +71,7 @@ func (ml *MLModel) ComputeLikelihood(partition map[int]int) float64 {
 	for comm, nodes := range comms {
 		maxEdges := len(nodes) * (len(nodes) - 1) / 2
 		missingEdges := maxEdges - mk[comm]
+
 		if missingEdges > 0 {
 			ll += float64(missingEdges) * math.Log(1-ml.Pin)
 		}
@@ -64,22 +79,28 @@ func (ml *MLModel) ComputeLikelihood(partition map[int]int) float64 {
 
 	totalM := ml.G.NumEdges()
 	sumMk := 0
+
 	for _, m := range mk {
 		sumMk += m
 	}
+
 	edgesBetween := totalM - sumMk
+
 	if edgesBetween > 0 {
 		ll += float64(edgesBetween) * math.Log(ml.Pout)
 	}
 
 	n := float64(ml.G.NumNodes())
 	sumNk2 := 0.0
+
 	for _, nodes := range comms {
 		nk := float64(len(nodes))
 		sumNk2 += nk * nk
 	}
+
 	maxEdgesBetween := int(n*n/2 - sumNk2/2)
 	missingEdgesBetween := maxEdgesBetween - edgesBetween
+
 	if missingEdgesBetween > 0 {
 		ll += float64(missingEdgesBetween) * math.Log(1-ml.Pout)
 	}
@@ -95,6 +116,7 @@ func (ml *MLModel) ComputeObjectiveFunction(partition map[int]int) float64 {
 
 	var totalInnerEdges int
 	var sumNk2 float64
+
 	for _, nodes := range comms {
 		innerEdges := 0
 		for i, u := range nodes {
@@ -121,6 +143,7 @@ func (ml *MLModel) computeOptimalProbs(partition map[int]int) {
 
 	var totalMk int
 	var sumNk2 float64
+
 	for _, nodes := range comms {
 		mk := 0
 		for i, u := range nodes {
@@ -139,6 +162,7 @@ func (ml *MLModel) computeOptimalProbs(partition map[int]int) {
 	m := float64(ml.G.NumEdges())
 
 	denomPin := sumNk2 - n
+
 	if denomPin > 0 {
 		ml.Pin = 2 * float64(totalMk) / denomPin
 	} else {
@@ -146,6 +170,7 @@ func (ml *MLModel) computeOptimalProbs(partition map[int]int) {
 	}
 
 	denomPout := n*n - sumNk2
+
 	if denomPout > 0 {
 		ml.Pout = 2 * (m - float64(totalMk)) / denomPout
 	} else {
@@ -155,12 +180,15 @@ func (ml *MLModel) computeOptimalProbs(partition map[int]int) {
 	if ml.Pin < 0.001 {
 		ml.Pin = 0.001
 	}
+
 	if ml.Pin > 0.999 {
 		ml.Pin = 0.999
 	}
+
 	if ml.Pout < 0.001 {
 		ml.Pout = 0.001
 	}
+
 	if ml.Pout > 0.999 {
 		ml.Pout = 0.999
 	}
@@ -215,6 +243,7 @@ func MaximumLikelihoodImproved(
 				}
 
 				changeCount := 0
+
 				for iter := 0; iter < numBetaIterations; iter++ {
 					for _, node := range g.GetNodeList() {
 						partition[node] = selectNewCommunityImproved(ml, node, partition)
@@ -236,17 +265,18 @@ func MaximumLikelihoodImproved(
 						break
 					}
 				}
+			}
 
-				if currentBest > bestObjective {
-					bestObjective = currentBest
-					bestPartition = copyPartition(currentBestPartition)
-					bestAlpha = alpha
-					bestConvergedAt = convergedAt
-					bestTotalIterations = len(objectiveHistory)
-					ml.ComputeLikelihood(bestPartition)
-					bestPin = ml.Pin
-					bestPout = ml.Pout
-				}
+			if currentBest > bestObjective {
+				bestObjective = currentBest
+				bestPartition = copyPartition(currentBestPartition)
+				bestAlpha = alpha
+				bestConvergedAt = convergedAt
+				bestTotalIterations = len(objectiveHistory)
+
+				ml.ComputeLikelihood(bestPartition)
+				bestPin = ml.Pin
+				bestPout = ml.Pout
 			}
 		}
 	}
@@ -262,6 +292,68 @@ func MaximumLikelihoodImproved(
 		ConvergedAt:      bestConvergedAt,
 		TotalIterations:  bestTotalIterations,
 	}
+}
+
+// Оптимизация с учетом целевого числа кластеров
+func selectNewCommunityImprovedWithTarget(ml *MLModel, node int, partition map[int]int) int {
+	oldComm := partition[node]
+	commsToTry := make(map[int]bool)
+	commsToTry[oldComm] = true
+
+	for neighbor := range ml.G.Edges[node] {
+		commsToTry[partition[neighbor]] = true
+	}
+
+	// Вероятность создать новую коммьюнити
+	currentK := NumCommunities(partition)
+	canCreateNew := ml.TargetK < 0 || currentK < ml.TargetK
+
+	if canCreateNew && rand.Float64() < 0.15 {
+		newComm := rand.Intn(currentK + 3)
+		commsToTry[newComm] = true
+	}
+
+	energies := make(map[int]float64)
+	var maxEnergy float64 = math.Inf(-1)
+
+	for comm := range commsToTry {
+		partition[node] = comm
+		energy := ml.ComputeObjectiveFunction(partition)
+		energies[comm] = energy
+
+		if energy > maxEnergy {
+			maxEnergy = energy
+		}
+	}
+
+	partition[node] = oldComm
+
+	probabilities := make(map[int]float64)
+	var sumProb float64
+
+	for comm, energy := range energies {
+		expVal := math.Exp(ml.Beta * (energy - maxEnergy))
+		probabilities[comm] = expVal
+		sumProb += expVal
+	}
+
+	if sumProb > 0 {
+		for comm := range probabilities {
+			probabilities[comm] /= sumProb
+		}
+	}
+
+	r := rand.Float64()
+	cumulative := 0.0
+
+	for comm, prob := range probabilities {
+		cumulative += prob
+		if r < cumulative {
+			return comm
+		}
+	}
+
+	return oldComm
 }
 
 func selectNewCommunityImproved(ml *MLModel, node int, partition map[int]int) int {
@@ -310,6 +402,7 @@ func selectNewCommunityImproved(ml *MLModel, node int, partition map[int]int) in
 
 	r := rand.Float64()
 	cumulative := 0.0
+
 	for comm, prob := range probabilities {
 		cumulative += prob
 		if r < cumulative {
