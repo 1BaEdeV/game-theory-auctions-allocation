@@ -17,7 +17,7 @@ func main() {
 	results := make([]ExperimentResult, 0)
 
 	// ======== ЭКСПЕРИМЕНТ 1: Гедонические игры с разными альфа ========
-	alphaValues := []float64{0.1, 0.3, 0.5, 0.7, 0.9}
+	alphaValues := []float64{0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.3, 0.5, 0.7, 0.9}
 
 	for _, alpha := range alphaValues {
 		start := time.Now()
